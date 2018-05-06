@@ -1,0 +1,85 @@
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+from matplotlib import cm
+
+class Partition:
+    
+    def __init__(self,img):
+        self.img = img
+        self.height = img.shape[0]
+        self.width = img.shape[1]
+        
+
+    def linePosition(self,rho,theta) :
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + self.width*(-b))
+        y1 = int(y0 + self.width*(a))
+        x2 = int(x0 - self.width*(-b))
+        y2 = int(y0 - self.width*(a))
+        pos1 = (x1,y1)
+        pos2 = (x2,y2)
+        return pos1,pos2
+        
+    def lines(self):
+        gray = cv2.cvtColor(self.img,cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray,400,400)
+        lines = cv2.HoughLines(edges,1,np.pi/2,300)
+        horizontal = []
+        for line in lines:
+            if line[0][1] > 1.56 and line[0][1] < 1.58:
+                horizontal.append(line[0])
+        rho = []
+        for r in horizontal :
+            rho.append(r[0])
+        triee = sorted(rho)
+        pos = []
+        i = 0
+        while i < len(triee)-1 :
+            pos.append(np.mean([triee[i],triee[i+1]]))
+            i = i+2
+        for a in pos :
+            pos1,pos2 = self.linePosition(a,np.pi/2)
+            res = cv2.line(self.img,pos1,pos2,(0,0,255),2)
+        fig = plt.figure("Image Lines")
+        plt.imshow(res, origin = "upper", cmap=cm.gray)
+        plt.title('Lines')
+        plt.show()
+        return fig
+    
+    def staff (self, lines):
+        if (len(lines) % 5)!= 0:
+            return ("Error - The number of lines detected is not a multiple of 5")
+        else :
+            nb = int(len(lines)/5)
+            staff = np.zeros((nb,5))
+        for l in range(nb):
+            for i in range (5):
+                staff[l][i] = lines[5*l+i]
+        return staff
+    
+    def staffLinesSpace(self,staffLines):
+        space = []
+        staffLineSpace = []
+        for l in range(staffLines.shape[0]):
+            for i in range(1,5):
+                space.append(staffLines[l][i]-staffLines[l][i-1])
+            staffLineSpace.append(np.mean(space))
+            avg = np.mean(staffLineSpace)
+        return avg 
+    
+    def noteHeadDetection(self,template, thresh):
+        a = int(self.staffLinesSpace(self.staff) + 5)
+        r = a/ template.shape[1]
+        dim = (a, int(template.shape[0] * r))
+        resized = cv2.resize(template, dim, interpolation = cv2.INTER_AREA)
+        h,w = resized.shape[:2]
+        match = cv2.matchTemplate(self.img,resized,cv2.TM_CCOEFF_NORMED)
+        threshold = thresh
+        loc = np.where(match >= threshold)
+        for pt in zip(*loc[::-1]):
+            res = cv2.rectangle(self.img, pt, (pt[0] + w, pt[1] + h), (0,255,255), 1)
+        
